@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/user/wc-cal-sync/internal/config"
@@ -75,6 +76,12 @@ func (e *Engine) Run(ctx context.Context) error {
 	realEvents := e.collectRealEvents(allEvents)
 	log.Printf("Found %d real (non-blocker) events across all calendars", len(realEvents))
 
+	if e.cfg.Sync.DryRun {
+		e.dryRunReport(realEvents)
+		log.Println("Dry-run mode — no changes made.")
+		return nil
+	}
+
 	if err := e.syncBlockers(ctx, realEvents); err != nil {
 		log.Printf("Error syncing blockers: %v", err)
 	}
@@ -100,17 +107,50 @@ func (e *Engine) Run(ctx context.Context) error {
 	return nil
 }
 
-// collectRealEvents filters out blocker events, returning only real ones.
+// collectRealEvents filters out blocker events and legacy blockers, returning only real ones.
 func (e *Engine) collectRealEvents(allEvents map[string][]provider.Event) []provider.Event {
 	var real []provider.Event
+	var skippedLegacy int
 	for _, events := range allEvents {
 		for _, ev := range events {
-			if !ev.IsBlocker() && ev.Title != "" {
-				real = append(real, ev)
+			if ev.IsBlocker() || ev.Title == "" {
+				continue
 			}
+			if e.isLegacyBlocker(&ev) {
+				skippedLegacy++
+				continue
+			}
+			real = append(real, ev)
 		}
 	}
+	if skippedLegacy > 0 {
+		log.Printf("Skipped %d legacy blocker events (matching blocker title patterns)", skippedLegacy)
+	}
 	return real
+}
+
+// isLegacyBlocker returns true if the event looks like a blocker created by
+// Reclaim.ai or another sync tool (matched by title).
+func (e *Engine) isLegacyBlocker(ev *provider.Event) bool {
+	title := strings.ToLower(strings.TrimSpace(ev.Title))
+
+	// Match the configured blocker title exactly
+	if strings.EqualFold(title, e.cfg.Sync.BlockerTitle) {
+		return true
+	}
+
+	// Match any configured legacy blocker words/patterns
+	for _, word := range e.cfg.Sync.LegacyBlockerWords {
+		if strings.EqualFold(title, word) {
+			return true
+		}
+		// Also match as a prefix, e.g. "Busy (via Reclaim)"
+		if strings.HasPrefix(title, strings.ToLower(word)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // syncBlockers ensures that for each real event, busy blockers exist on all other calendars.
@@ -204,6 +244,40 @@ func (e *Engine) cleanupOrphanedBlockers(ctx context.Context, realEvents []provi
 	}
 
 	return nil
+}
+
+// dryRunReport logs what the engine would do without making any changes.
+func (e *Engine) dryRunReport(realEvents []provider.Event) {
+	log.Println("=== DRY-RUN REPORT ===")
+
+	blockerCount := 0
+	for _, ev := range realEvents {
+		if !ev.IsBusy {
+			continue
+		}
+		sourceTag := provider.MakeSourceTag(ev.ProviderID, ev.CalendarID, ev.ID)
+		existingBlockers := e.state.GetBlockers(sourceTag)
+		hasBlocker := make(map[string]bool)
+		for _, b := range existingBlockers {
+			hasBlocker[b.CalendarConfigID] = true
+		}
+
+		for _, cal := range e.cfg.Calendars {
+			if cal.ID == ev.ProviderID || hasBlocker[cal.ID] {
+				continue
+			}
+			log.Printf("  [WOULD CREATE] Blocker on %s for %q (%s, %s - %s)",
+				cal.ID, ev.Title, ev.ProviderID,
+				ev.Start.Format("Jan 02 15:04"), ev.End.Format("15:04"))
+			blockerCount++
+		}
+	}
+
+	if e.merged != nil {
+		log.Printf("  [WOULD SYNC] %d events to merged calendar", len(realEvents))
+	}
+
+	log.Printf("=== Summary: %d real events, %d new blockers would be created ===", len(realEvents), blockerCount)
 }
 
 // BuildProviders creates all provider instances from config.

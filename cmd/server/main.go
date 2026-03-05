@@ -18,11 +18,17 @@ import (
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	runOnce := flag.Bool("once", false, "Run one sync cycle and exit")
+	dryRun := flag.Bool("dry-run", false, "Log what would happen without making changes")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// CLI flag overrides config
+	if *dryRun {
+		cfg.Sync.DryRun = true
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

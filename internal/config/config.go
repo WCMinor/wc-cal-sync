@@ -58,10 +58,12 @@ type MergedCalendarConfig struct {
 }
 
 type SyncConfig struct {
-	IntervalMinutes int    `yaml:"interval_minutes"`
-	LookaheadDays   int    `yaml:"lookahead_days"`
-	LookbackDays    int    `yaml:"lookback_days"`
-	BlockerTitle    string `yaml:"blocker_title"`
+	IntervalMinutes    int      `yaml:"interval_minutes"`
+	LookaheadDays      int      `yaml:"lookahead_days"`
+	LookbackDays       int      `yaml:"lookback_days"`
+	BlockerTitle       string   `yaml:"blocker_title"`
+	LegacyBlockerWords []string `yaml:"legacy_blocker_words"` // titles to treat as legacy blockers (e.g. from Reclaim.ai)
+	DryRun             bool     `yaml:"dry_run"`
 }
 
 type OAuthConfig struct {
