@@ -1,5 +1,5 @@
 # Build output
-wc-cal-sync
+/wc-cal-sync
 /dist/
 
 # Go tool cache
