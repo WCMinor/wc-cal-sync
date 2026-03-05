@@ -1,0 +1,15 @@
+# Build output
+/wc-cal-sync
+/dist/
+
+# Go tool cache
+vendor/
+
+# macOS
+.DS_Store
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
