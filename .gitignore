@@ -1,0 +1,7 @@
+config.yaml
+tokens/
+*.json
+!config.example.yaml
+!go.mod
+!go.sum
+/wc-cal-sync
